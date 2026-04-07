@@ -1,36 +1,20 @@
 const GITHUB_API = "https://api.github.com";
 
-export type RepoRef = { owner: string; repo: string };
-
-export function parseRepoUrl(input: string): RepoRef | null {
-  const trimmed = input.trim();
-  try {
-    const u = new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`);
-    if (!u.hostname.endsWith("github.com")) return null;
-    const parts = u.pathname.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
-    if (parts.length < 2) return null;
-    const repo = parts[1].replace(/\.git$/i, "");
-    return { owner: parts[0], repo };
-  } catch {
-    return null;
-  }
-}
-
-function authHeaders(): HeadersInit {
-  const token = process.env.GITHUB_TOKEN;
+function authHeaders(token?: string): HeadersInit {
+  const authToken = token ?? process.env.GITHUB_TOKEN;
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
   };
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
+  if (authToken) {
+    headers.Authorization = `Bearer ${authToken}`;
   }
   return headers;
 }
 
-async function ghJson<T>(path: string): Promise<T> {
+async function ghJson<T>(path: string, token?: string): Promise<T> {
   const res = await fetch(`${GITHUB_API}${path}`, {
-    headers: authHeaders(),
+    headers: authHeaders(token),
     next: { revalidate: 0 },
   });
   if (!res.ok) {
@@ -50,23 +34,27 @@ export type PullRequestInfo = {
 export async function fetchPullRequest(
   owner: string,
   repo: string,
-  pullNumber: number
+  pullNumber: number,
+  token?: string
 ): Promise<PullRequestInfo> {
   return ghJson<PullRequestInfo>(
     `/repos/${owner}/${repo}/pulls/${pullNumber}`
+    ,
+    token
   );
 }
 
 export async function fetchPullRequestDiff(
   owner: string,
   repo: string,
-  pullNumber: number
+  pullNumber: number,
+  token?: string
 ): Promise<string> {
   const res = await fetch(
     `${GITHUB_API}/repos/${owner}/${repo}/pulls/${pullNumber}`,
     {
       headers: {
-        ...authHeaders(),
+        ...authHeaders(token),
         Accept: "application/vnd.github.diff",
       },
       next: { revalidate: 0 },
@@ -91,13 +79,16 @@ export type PrFile = {
 export async function fetchPullRequestFiles(
   owner: string,
   repo: string,
-  pullNumber: number
+  pullNumber: number,
+  token?: string
 ): Promise<PrFile[]> {
   const files: PrFile[] = [];
   let page = 1;
   for (;;) {
     const batch = await ghJson<PrFile[]>(
       `/repos/${owner}/${repo}/pulls/${pullNumber}/files?per_page=100&page=${page}`
+      ,
+      token
     );
     files.push(...batch);
     if (batch.length < 100) break;
@@ -115,14 +106,15 @@ type ContentFile = {
 export async function fetchReadmeAtRef(
   owner: string,
   repo: string,
-  ref: string
+  ref: string,
+  token?: string
 ): Promise<{ path: string; text: string } | null> {
   const candidates = ["README.md", "Readme.md", "readme.md"];
   for (const path of candidates) {
     try {
       const res = await fetch(
         `${GITHUB_API}/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(ref)}`,
-        { headers: authHeaders(), next: { revalidate: 0 } }
+        { headers: authHeaders(token), next: { revalidate: 0 } }
       );
       if (res.status === 404) continue;
       if (!res.ok) {
@@ -148,5 +140,47 @@ export function truncateDiff(diff: string, maxChars: number): string {
   return (
     diff.slice(0, maxChars) +
     `\n\n… [diff truncated: ${diff.length - maxChars} more characters]`
+  );
+}
+
+export type UserRepo = {
+  id: number;
+  full_name: string;
+  name: string;
+  private: boolean;
+  owner: { login: string };
+};
+
+export type RepoPull = {
+  number: number;
+  title: string;
+  state: string;
+  head: { ref: string };
+  user: { login: string };
+};
+
+export async function fetchUserRepos(token: string): Promise<UserRepo[]> {
+  const repos: UserRepo[] = [];
+  let page = 1;
+  for (;;) {
+    const batch = await ghJson<UserRepo[]>(
+      `/user/repos?sort=updated&per_page=100&page=${page}`,
+      token
+    );
+    repos.push(...batch);
+    if (batch.length < 100) break;
+    page += 1;
+  }
+  return repos;
+}
+
+export async function fetchRepoPulls(
+  owner: string,
+  repo: string,
+  token: string
+): Promise<RepoPull[]> {
+  return ghJson<RepoPull[]>(
+    `/repos/${owner}/${repo}/pulls?state=open&sort=updated&direction=desc&per_page=100`,
+    token
   );
 }
