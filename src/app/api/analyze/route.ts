@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
 import {
   fetchPullRequest,
   fetchPullRequestDiff,
   fetchPullRequestFiles,
   fetchReadmeAtRef,
-  parseRepoUrl,
   truncateDiff,
 } from "@/lib/github";
+import { authOptions } from "@/lib/auth";
 import { splitReadmeIntoSections } from "@/lib/readme-sections";
 import { analyzeReadmeAgainstDiff } from "@/lib/llm";
 
@@ -15,34 +16,36 @@ export const maxDuration = 120;
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as {
-      repoUrl?: string;
+      owner?: string;
+      repo?: string;
       prNumber?: number;
     };
-    const repoUrl = String(body.repoUrl ?? "").trim();
+    const owner = String(body.owner ?? "").trim();
+    const repo = String(body.repo ?? "").trim();
     const prNumber = Number(body.prNumber);
-    if (!repoUrl || !Number.isFinite(prNumber) || prNumber < 1) {
+    if (!owner || !repo || !Number.isFinite(prNumber) || prNumber < 1) {
       return NextResponse.json(
-        { error: "Provide a valid GitHub repo URL and PR number." },
+        { error: "Provide owner/repo and a valid PR number." },
         { status: 400 }
       );
     }
 
-    const parsed = parseRepoUrl(repoUrl);
-    if (!parsed) {
+    const session = await getServerSession(authOptions);
+    const token = session?.accessToken || process.env.GITHUB_TOKEN;
+    if (!token) {
       return NextResponse.json(
-        { error: "Could not parse a github.com owner/repo from the URL." },
-        { status: 400 }
+        { error: "Sign in with GitHub first (or set GITHUB_TOKEN)." },
+        { status: 401 }
       );
     }
 
-    const { owner, repo } = parsed;
-    const pr = await fetchPullRequest(owner, repo, prNumber);
+    const pr = await fetchPullRequest(owner, repo, prNumber, token);
     const [diff, files] = await Promise.all([
-      fetchPullRequestDiff(owner, repo, prNumber),
-      fetchPullRequestFiles(owner, repo, prNumber),
+      fetchPullRequestDiff(owner, repo, prNumber, token),
+      fetchPullRequestFiles(owner, repo, prNumber, token),
     ]);
 
-    const readme = await fetchReadmeAtRef(owner, repo, pr.head.ref);
+    const readme = await fetchReadmeAtRef(owner, repo, pr.head.ref, token);
     const readmeText = readme?.text ?? "";
     const readmePath = readme?.path ?? "README.md";
     const sections = splitReadmeIntoSections(readmeText);
