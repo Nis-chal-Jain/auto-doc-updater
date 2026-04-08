@@ -2,7 +2,7 @@
 
 import { SectionDiffView } from "@/components/SectionDiffView";
 import { signIn, signOut, useSession } from "next-auth/react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type ReadmeSection = { id: string; headingLine: string; title: string; level: number; markdown: string };
 type LlmSectionProposal = { sectionId: string; affected: boolean; proposedMarkdown?: string; rationale?: string };
@@ -18,6 +18,7 @@ type AnalyzeResponse = {
   filesChanged: { filename: string; status: string; additions: number; deletions: number }[];
   llm: { summary: string; proposals: LlmSectionProposal[] };
 };
+type AuthMethod = "none" | "token" | "oauth";
 
 function mergeReadme(sections: ReadmeSection[], proposalsById: Map<string, LlmSectionProposal>, accepted: Record<string, boolean>) {
   return sections
@@ -31,7 +32,23 @@ function mergeReadme(sections: ReadmeSection[], proposalsById: Map<string, LlmSe
 
 export default function Home() {
   const { data: session, status } = useSession();
-  const isAuthed = status === "authenticated";
+  const [authMethod, setAuthMethod] = useState<AuthMethod>("none");
+  const [runtimeToken, setRuntimeToken] = useState("");
+  const [clientIdInput, setClientIdInput] = useState("");
+  const [clientSecretInput, setClientSecretInput] = useState("");
+  const [hasOAuth, setHasOAuth] = useState(false);
+  const [hasServerGithubToken, setHasServerGithubToken] = useState(false);
+  const [useServerTokenMode, setUseServerTokenMode] = useState(false);
+  const isAuthed =
+    status === "authenticated" ||
+    useServerTokenMode ||
+    (authMethod === "token" && runtimeToken.trim().length > 0);
+  const authHeaders = useMemo<Record<string, string>>(() => {
+    if (authMethod === "token" && runtimeToken.trim()) {
+      return { "x-github-token": runtimeToken.trim() };
+    }
+    return {} as Record<string, string>;
+  }, [authMethod, runtimeToken]);
   const [repos, setRepos] = useState<RepoOption[]>([]);
   const [pulls, setPulls] = useState<PullOption[]>([]);
   const [selectedRepo, setSelectedRepo] = useState("");
@@ -59,11 +76,33 @@ export default function Home() {
   );
   const mergedReadme = useMemo(() => (data ? mergeReadme(data.sections, proposalsById, accepted) : ""), [data, proposalsById, accepted]);
 
+  useEffect(() => {
+    const loadAuthConfig = async () => {
+      try {
+        const res = await fetch("/api/auth/config");
+        const json = (await res.json()) as {
+          hasOAuth?: boolean;
+          hasServerGithubToken?: boolean;
+        };
+        const oauth = Boolean(json.hasOAuth);
+        const serverToken = Boolean(json.hasServerGithubToken);
+        setHasOAuth(oauth);
+        setHasServerGithubToken(serverToken);
+        if (!oauth && serverToken) {
+          setUseServerTokenMode(true);
+        }
+      } catch {
+        // ignore, page will still allow OAuth path if configured
+      }
+    };
+    void loadAuthConfig();
+  }, []);
+
   const loadRepos = async () => {
     setError(null);
     setLoadingRepos(true);
     try {
-      const res = await fetch("/api/github/repos");
+      const res = await fetch("/api/github/repos", { headers: authHeaders });
       const json = (await res.json()) as { repos?: RepoOption[]; error?: string };
       if (!res.ok) throw new Error(json.error ?? `Failed (${res.status})`);
       setRepos(json.repos ?? []);
@@ -81,7 +120,11 @@ export default function Home() {
     setSelectedPr("");
     try {
       const [owner, repo] = fullName.split("/");
-      const res = await fetch("/api/github/pulls", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ owner, repo }) });
+      const res = await fetch("/api/github/pulls", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({ owner, repo }),
+      });
       const json = (await res.json()) as { pulls?: PullOption[]; error?: string };
       if (!res.ok) throw new Error(json.error ?? `Failed (${res.status})`);
       setPulls(json.pulls ?? []);
@@ -103,7 +146,7 @@ export default function Home() {
     try {
       const res = await fetch("/api/analyze", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({ owner: selectedRepoObj.owner, repo: selectedRepoObj.name, prNumber: Number(selectedPr) }),
       });
       const json = (await res.json()) as AnalyzeResponse & { error?: string };
@@ -127,7 +170,7 @@ export default function Home() {
     try {
       const res = await fetch("/api/create-docs-pr", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({
           owner: data.repo.owner,
           repo: data.repo.repo,
@@ -150,6 +193,16 @@ export default function Home() {
     }
   };
 
+  const onOAuthLogin = () => {
+    if (!clientIdInput.trim() || !clientSecretInput.trim()) {
+      setError("Enter both GitHub client ID and client secret.");
+      return;
+    }
+    setError(null);
+    setAuthMethod("oauth");
+    void signIn("github");
+  };
+
   return (
     <div className="min-h-full bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
       <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
@@ -158,15 +211,7 @@ export default function Home() {
             <h1 className="mb-2 text-3xl font-semibold tracking-tight">GitHub docs sync assistant</h1>
             <p className="text-zinc-600 dark:text-zinc-400">Login, pick repo and PR, review README updates, then create a docs PR.</p>
           </div>
-          {!isAuthed ? (
-            <button
-              type="button"
-              onClick={() => signIn("github")}
-              className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white"
-            >
-              Login with GitHub
-            </button>
-          ) : (
+          {status === "authenticated" && (
             <button
               type="button"
               onClick={() => signOut()}
@@ -175,13 +220,101 @@ export default function Home() {
               Logout
             </button>
           )}
+          {!isAuthed && hasOAuth && (
+            <button
+              type="button"
+              onClick={() => signIn("github")}
+              className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white"
+            >
+              Login with GitHub
+            </button>
+          )}
+          {!hasOAuth && hasServerGithubToken && !useServerTokenMode && (
+            <button
+              type="button"
+              onClick={() => setUseServerTokenMode(true)}
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white"
+            >
+              Continue with server GitHub token
+            </button>
+          )}
         </div>
 
         {!isAuthed ? (
           <section className="rounded-2xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
-            <button type="button" onClick={() => signIn("github")} className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white">
-              Login with GitHub
-            </button>
+            {authMethod === "none" && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setAuthMethod("token")}
+                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white"
+                >
+                  Login with GitHub token
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAuthMethod("oauth")}
+                  className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white"
+                >
+                  Login with client ID + secret
+                </button>
+              </div>
+            )}
+            {authMethod === "token" && (
+              <div className="space-y-3">
+                <input
+                  type="password"
+                  value={runtimeToken}
+                  onChange={(e) => setRuntimeToken(e.target.value)}
+                  placeholder="Paste GitHub token"
+                  className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!runtimeToken.trim()) {
+                      setError("Enter a GitHub token.");
+                      return;
+                    }
+                    setError(null);
+                    setUseServerTokenMode(false);
+                  }}
+                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white"
+                >
+                  Use this token and continue
+                </button>
+              </div>
+            )}
+            {authMethod === "oauth" && (
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  value={clientIdInput}
+                  onChange={(e) => setClientIdInput(e.target.value)}
+                  placeholder="GitHub client ID"
+                  className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                />
+                <input
+                  type="password"
+                  value={clientSecretInput}
+                  onChange={(e) => setClientSecretInput(e.target.value)}
+                  placeholder="GitHub client secret"
+                  className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                />
+                <button
+                  type="button"
+                  onClick={onOAuthLogin}
+                  className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white"
+                >
+                  Continue with GitHub OAuth login
+                </button>
+                {!hasOAuth && (
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    OAuth still requires server env configuration (`GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`).
+                  </p>
+                )}
+              </div>
+            )}
           </section>
         ) : (
           <div className="space-y-6">
