@@ -13,7 +13,8 @@ export async function POST(req: NextRequest) {
     }
 
     const session = await getServerSession(authOptions);
-    const token = session?.accessToken || process.env.GITHUB_TOKEN;
+    const headerToken = req.headers.get("x-github-token") ?? "";
+    const token = headerToken || session?.accessToken || process.env.GITHUB_TOKEN;
     if (!token) {
       return NextResponse.json({ error: "Not authenticated with GitHub." }, { status: 401 });
     }
