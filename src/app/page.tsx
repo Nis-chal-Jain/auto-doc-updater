@@ -1,6 +1,10 @@
 "use client";
 
 import { SectionDiffView } from "@/components/SectionDiffView";
+import { BackgroundGradientAnimation } from "@/components/ui/background-gradient-animation";
+import { GridBackground } from "@/components/ui/grid-background";
+import { Spotlight } from "@/components/ui/spotlight";
+import { cn } from "@/lib/utils";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -19,6 +23,28 @@ type AnalyzeResponse = {
   llm: { summary: string; proposals: LlmSectionProposal[] };
 };
 type AuthMethod = "none" | "token" | "oauth";
+
+const BG = {
+  gradientBackgroundStart: "rgb(5, 5, 6)",
+  gradientBackgroundEnd: "rgb(15, 15, 18)",
+  firstColor: "48, 48, 52",
+  secondColor: "72, 72, 78",
+  thirdColor: "58, 58, 64",
+  fourthColor: "38, 38, 42",
+  fifthColor: "24, 24, 27",
+  pointerColor: "100, 100, 110",
+  blendingValue: "normal",
+  size: "88%",
+} as const;
+
+const field =
+  "w-full rounded-xl border border-zinc-800/90 bg-zinc-950/60 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 outline-none transition focus:border-zinc-600 focus:ring-2 focus:ring-zinc-500/20 disabled:opacity-50";
+
+const panel =
+  "rounded-2xl border border-zinc-800/80 bg-zinc-950/50 p-6 shadow-[0_0_0_1px_rgba(255,255,255,0.035)_inset] backdrop-blur-xl";
+
+const ghostBtn =
+  "rounded-xl border border-zinc-700/80 bg-zinc-950/40 px-3 py-2 text-sm font-medium text-zinc-200 transition hover:border-zinc-600 hover:bg-zinc-900/60 disabled:opacity-45 cursor-pointer";
 
 function mergeReadme(sections: ReadmeSection[], proposalsById: Map<string, LlmSectionProposal>, accepted: Record<string, boolean>) {
   return sections
@@ -204,70 +230,63 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-full bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-      <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
-        <div className="mb-8 flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="mb-2 text-3xl font-semibold tracking-tight">GitHub docs sync assistant</h1>
-            <p className="text-zinc-600 dark:text-zinc-400">Login, pick repo and PR, review README updates, then create a docs PR.</p>
+    <div className="relative min-h-[100dvh] text-zinc-100">
+      <div className="fixed inset-0 -z-20">
+        <BackgroundGradientAnimation {...BG} interactive={false} containerClassName="min-h-[100dvh] w-full" />
+      </div>
+      <GridBackground />
+
+      <div className="relative z-10 mx-auto max-w-5xl px-4 py-10 sm:px-6">
+        <Spotlight />
+        <header className="relative mb-10 flex flex-wrap items-start justify-between gap-4 border-b border-zinc-800/80 pb-8">
+          <div className="max-w-2xl space-y-3">
+            <p className="text-xs font-medium uppercase tracking-[0.2em] text-zinc-500">Documentation</p>
+            <h1 className="text-3xl font-semibold tracking-tight text-zinc-50 sm:text-4xl">AUTODOC - GitHub docs sync assistant</h1>
+            <p className="text-sm leading-relaxed text-zinc-400">
+              Authenticate, choose a repository and pull request, review README proposals, then open a documentation PR — all in one
+              workflow.
+            </p>
           </div>
-          {status === "authenticated" && (
-            <button
-              type="button"
-              onClick={() => signOut()}
-              className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700"
-            >
-              Logout
-            </button>
-          )}
-          {!isAuthed && hasOAuth && (
-            <button
-              type="button"
-              onClick={() => signIn("github")}
-              className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white"
-            >
-              Login with GitHub
-            </button>
-          )}
-          {!hasOAuth && hasServerGithubToken && !useServerTokenMode && (
-            <button
-              type="button"
-              onClick={() => setUseServerTokenMode(true)}
-              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white"
-            >
-              Continue with server GitHub token
-            </button>
-          )}
-        </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {status === "authenticated" && (
+              <button type="button" onClick={() => signOut()} className={ghostBtn}>
+                Log out
+              </button>
+            )}
+            {!isAuthed && hasOAuth && (
+              <button type="button" onClick={() => signIn("github")} className={cn(ghostBtn, "min-w-[10rem]")}>
+                Login with GitHub
+              </button>
+            )}
+            {!hasOAuth && hasServerGithubToken && !useServerTokenMode && (
+              <button type="button" onClick={() => setUseServerTokenMode(true)} className={cn(ghostBtn, "min-w-[12rem]")}>
+                Use server token
+              </button>
+            )}
+          </div>
+        </header>
 
         {!isAuthed ? (
-          <section className="rounded-2xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
+          <section className={panel}>
             {authMethod === "none" && (
               <div className="grid gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => setAuthMethod("token")}
-                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white"
-                >
-                  Login with GitHub token
+                <button type="button" onClick={() => setAuthMethod("token")} className={cn(ghostBtn, "w-full sm:w-auto")}>
+                  GitHub token
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setAuthMethod("oauth")}
-                  className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white"
-                >
-                  Login with client ID + secret
+                <button type="button" onClick={() => setAuthMethod("oauth")} className={cn(ghostBtn, "w-full sm:w-auto")}>
+                  OAuth credentials
                 </button>
               </div>
             )}
             {authMethod === "token" && (
-              <div className="space-y-3">
+              <div className="space-y-4">
+                <label className="block text-xs font-medium uppercase tracking-wide text-zinc-500">Personal access token</label>
                 <input
                   type="password"
                   value={runtimeToken}
                   onChange={(e) => setRuntimeToken(e.target.value)}
-                  placeholder="Paste GitHub token"
-                  className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                  placeholder="ghp_…"
+                  className={field}
                 />
                 <button
                   type="button"
@@ -279,38 +298,36 @@ export default function Home() {
                     setError(null);
                     setUseServerTokenMode(false);
                   }}
-                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white"
+                  className={cn(ghostBtn, "w-full sm:w-auto")}
                 >
-                  Use this token and continue
+                  Continue with token
                 </button>
               </div>
             )}
             {authMethod === "oauth" && (
-              <div className="space-y-3">
+              <div className="space-y-4">
+                <label className="block text-xs font-medium uppercase tracking-wide text-zinc-500">OAuth app</label>
                 <input
                   type="text"
                   value={clientIdInput}
                   onChange={(e) => setClientIdInput(e.target.value)}
-                  placeholder="GitHub client ID"
-                  className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                  placeholder="Client ID"
+                  className={field}
                 />
                 <input
                   type="password"
                   value={clientSecretInput}
                   onChange={(e) => setClientSecretInput(e.target.value)}
-                  placeholder="GitHub client secret"
-                  className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                  placeholder="Client secret"
+                  className={field}
                 />
-                <button
-                  type="button"
-                  onClick={onOAuthLogin}
-                  className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white"
-                >
-                  Continue with GitHub OAuth login
+                <button type="button" onClick={onOAuthLogin} className={cn(ghostBtn, "w-full sm:w-auto")}>
+                  Continue with OAuth
                 </button>
                 {!hasOAuth && (
-                  <p className="text-xs text-amber-700 dark:text-amber-400">
-                    OAuth still requires server env configuration (`GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`).
+                  <p className="text-xs text-zinc-500">
+                    Server env must define <code className="rounded bg-zinc-900 px-1 py-0.5 font-mono text-[11px] text-zinc-400">GITHUB_CLIENT_ID</code>{" "}
+                    and <code className="rounded bg-zinc-900 px-1 py-0.5 font-mono text-[11px] text-zinc-400">GITHUB_CLIENT_SECRET</code>.
                   </p>
                 )}
               </div>
@@ -318,58 +335,128 @@ export default function Home() {
           </section>
         ) : (
           <div className="space-y-6">
-            <section className="rounded-2xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-zinc-600 dark:text-zinc-400">Signed in as {session?.user?.email ?? session?.user?.name ?? "GitHub user"}</p>
-                <button type="button" onClick={() => signOut()} className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700">Logout</button>
+            <section className={panel}>
+              <div className="flex flex-col gap-4 border-b border-zinc-800/80 pb-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Session</p>
+                  <p className="mt-1 text-sm text-zinc-300">
+                    Signed in as <span className="font-medium text-zinc-100">{session?.user?.email ?? session?.user?.name ?? "GitHub user"}</span>
+                  </p>
+                </div>
+                <button type="button" onClick={() => signOut()} className={cn(ghostBtn, "shrink-0")}>
+                  Log out
+                </button>
               </div>
-              <div className="mt-4 grid gap-4 md:grid-cols-[1fr_auto]">
-                <select value={selectedRepo} onChange={(e) => { const v = e.target.value; setSelectedRepo(v); if (v) void loadPulls(v); }} className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950">
-                  <option value="">Select repository...</option>
-                  {repos.map((repo) => <option key={repo.id} value={repo.fullName}>{repo.fullName}</option>)}
-                </select>
-                <button type="button" onClick={loadRepos} disabled={loadingRepos} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{loadingRepos ? "Loading repos..." : "Load repositories"}</button>
+              <div className="mt-6 grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+                <div>
+                  <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-zinc-500">Repository</label>
+                  <select
+                    value={selectedRepo}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setSelectedRepo(v);
+                      if (v) void loadPulls(v);
+                    }}
+                    className={field}
+                  >
+                    <option value="">Select repository…</option>
+                    {repos.map((repo) => (
+                      <option key={repo.id} value={repo.fullName}>
+                        {repo.fullName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={loadRepos}
+                  disabled={loadingRepos}
+                  className={cn(ghostBtn, "w-full md:w-[11rem]")}
+                >
+                  {loadingRepos ? "Loading…" : "Load repos"}
+                </button>
               </div>
-              <div className="mt-3 grid gap-4 md:grid-cols-[1fr_auto]">
-                <select value={selectedPr} onChange={(e) => setSelectedPr(e.target.value)} disabled={!selectedRepo || loadingPulls} className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950 disabled:opacity-60">
-                  <option value="">Select open PR...</option>
-                  {pulls.map((pr) => <option key={pr.number} value={pr.number}>#{pr.number} {pr.title}</option>)}
-                </select>
-                <button type="button" onClick={analyze} disabled={!selectedRepo || !selectedPr || analyzing} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{analyzing ? "Analyzing..." : "Analyze README"}</button>
+              <div className="mt-4 grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+                <div>
+                  <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-zinc-500">Pull request</label>
+                  <select
+                    value={selectedPr}
+                    onChange={(e) => setSelectedPr(e.target.value)}
+                    disabled={!selectedRepo || loadingPulls}
+                    className={field}
+                  >
+                    <option value="">Select open PR…</option>
+                    {pulls.map((pr) => (
+                      <option key={pr.number} value={pr.number}>
+                        #{pr.number} {pr.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={analyze}
+                  disabled={!selectedRepo || !selectedPr || analyzing}
+                  className={cn(ghostBtn, "w-full md:w-[11rem]")}
+                >
+                  {analyzing ? "Analyzing…" : "Analyze README"}
+                </button>
               </div>
             </section>
 
-            {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">{error}</p>}
+            {error && (
+              <p className="rounded-xl border border-red-900/50 bg-red-950/35 px-4 py-3 text-sm text-red-200/95 backdrop-blur-sm">{error}</p>
+            )}
 
             {data && (
               <>
-                <section className="rounded-2xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
-                  <h2 className="text-lg font-semibold">{data.repo.owner}/{data.repo.repo} #{data.pr.number}</h2>
-                  <p className="mt-1 text-zinc-600 dark:text-zinc-400">{data.pr.title}</p>
-                  <p className="mt-3 text-sm text-zinc-700 dark:text-zinc-300">{data.llm.summary}</p>
+                <section className={panel}>
+                  <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Pull request</p>
+                  <h2 className="mt-2 text-xl font-semibold tracking-tight text-zinc-50">
+                    {data.repo.owner}/{data.repo.repo} #{data.pr.number}
+                  </h2>
+                  <p className="mt-1 text-sm text-zinc-400">{data.pr.title}</p>
+                  <p className="mt-5 border-l-2 border-zinc-600 pl-4 text-sm leading-relaxed text-zinc-300">{data.llm.summary}</p>
                 </section>
-                <section className="rounded-2xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-                  <button type="button" onClick={() => setShowDiff((s) => !s)} className="flex w-full items-center justify-between px-6 py-4 text-left text-base font-semibold">
-                    PR unified diff
-                    <span className="text-sm font-normal text-zinc-500">{showDiff ? "Hide" : "Show"}</span>
+
+                <section className={cn(panel, "p-0 overflow-hidden")}>
+                  <button
+                    type="button"
+                    onClick={() => setShowDiff((s) => !s)}
+                    className="flex w-full items-center justify-between px-6 py-4 text-left transition hover:bg-zinc-900/40"
+                  >
+                    <span className="text-sm font-semibold text-zinc-100">PR unified diff</span>
+                    <span className="text-xs font-medium text-zinc-500">{showDiff ? "Hide" : "Show"}</span>
                   </button>
-                  {showDiff && <pre className="max-h-[28rem] overflow-auto border-t border-zinc-200 bg-zinc-50 p-4 text-xs leading-relaxed text-zinc-800 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200">{data.diffPreview}</pre>}
+                  {showDiff && (
+                    <pre className="max-h-[28rem] overflow-auto border-t border-zinc-800/90 bg-black/40 p-4 font-mono text-xs leading-relaxed text-zinc-300">
+                      {data.diffPreview}
+                    </pre>
+                  )}
                 </section>
+
                 <div className="space-y-4">
-                  <h3 className="text-lg font-semibold">Section review</h3>
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Section review</h3>
                   {affectedSectionIds.map((id) => {
                     const section = data.sections.find((s) => s.id === id);
                     const proposal = proposalsById.get(id);
                     if (!section || !proposal?.proposedMarkdown) return null;
                     const isOn = accepted[id] !== false;
                     return (
-                      <article key={id} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-                        <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3 dark:border-zinc-800">
+                      <article key={id} className={cn(panel, "overflow-hidden p-0")}>
+                        <div className="flex flex-col gap-3 border-b border-zinc-800/80 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
                           <div>
-                            <p className="text-sm font-medium">{section.title}</p>
-                            {proposal.rationale && <p className="mt-1 text-xs text-zinc-500">{proposal.rationale}</p>}
+                            <p className="font-medium text-zinc-100">{section.title}</p>
+                            {proposal.rationale && <p className="mt-1.5 text-xs leading-relaxed text-zinc-500">{proposal.rationale}</p>}
                           </div>
-                          <button type="button" onClick={() => setAccepted((prev) => ({ ...prev, [id]: !prev[id] }))} className={`rounded-lg px-3 py-1.5 text-xs font-medium ${isOn ? "bg-emerald-600 text-white" : "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"}`}>
+                          <button
+                            type="button"
+                            onClick={() => setAccepted((prev) => ({ ...prev, [id]: !prev[id] }))}
+                            className={cn(
+                              "shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition",
+                              isOn ? "bg-zinc-100 text-zinc-950" : "border border-zinc-700 bg-zinc-900/80 text-zinc-400"
+                            )}
+                          >
                             {isOn ? "Accepted" : "Rejected"}
                           </button>
                         </div>
@@ -378,16 +465,33 @@ export default function Home() {
                     );
                   })}
                 </div>
-                <section className="rounded-2xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="text-base font-semibold">Merged README preview</h3>
-                    <button type="button" onClick={createDocsPr} disabled={prBusy || mergedReadme === data.readmeFull} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50">
-                      {prBusy ? "Creating PR..." : "Accept and create PR"}
+
+                <section className={panel}>
+                  <div className="flex flex-col gap-4 border-b border-zinc-800/80 pb-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                    <h3 className="text-lg font-semibold text-zinc-50">Merged README preview</h3>
+                    <button
+                      type="button"
+                      onClick={createDocsPr}
+                      disabled={prBusy || mergedReadme === data.readmeFull}
+                      className={cn(ghostBtn, "w-full sm:w-auto")}
+                    >
+                      {prBusy ? "Creating PR…" : "Create docs PR"}
                     </button>
                   </div>
-                  {prError && <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">{prError}</p>}
-                  {prResultUrl && <p className="mt-2 text-sm text-emerald-700 dark:text-emerald-400">PR opened: <a href={prResultUrl} target="_blank" rel="noreferrer" className="underline">{prResultUrl}</a></p>}
-                  <pre className="mt-4 max-h-96 overflow-auto whitespace-pre-wrap rounded-xl bg-zinc-50 p-4 text-xs leading-relaxed text-zinc-800 dark:bg-zinc-950 dark:text-zinc-200">{mergedReadme || "(empty)"}</pre>
+                  {prError && (
+                    <p className="mt-4 rounded-xl border border-red-900/50 bg-red-950/35 px-4 py-3 text-sm text-red-200/95">{prError}</p>
+                  )}
+                  {prResultUrl && (
+                    <p className="mt-4 text-sm text-zinc-400">
+                      PR opened:{" "}
+                      <a href={prResultUrl} target="_blank" rel="noreferrer" className="font-medium text-zinc-200 underline decoration-zinc-600 underline-offset-4 hover:text-white">
+                        {prResultUrl}
+                      </a>
+                    </p>
+                  )}
+                  <pre className="mt-5 max-h-96 overflow-auto whitespace-pre-wrap rounded-xl border border-zinc-800/80 bg-black/35 p-4 font-mono text-xs leading-relaxed text-zinc-300">
+                    {mergedReadme || "(empty)"}
+                  </pre>
                 </section>
               </>
             )}
